@@ -90,16 +90,15 @@ def prepare_stocks(df:pd.DataFrame):
     change=[]
     prev_i=0
     for i in df["Close"]:
-        if i >1.01*prev_i or i<0.99*prev_i:         # 1% threshold
-            prev_i=i
+        if i >1.001*prev_i or i<0.999*prev_i:         # 1% threshold
             change.append(math.copysign(1,i-prev_i))
         else:
             change.append(0)
+        prev_i=i
 
     df["change"]=change
     if args.verbose or args.debug:
         print(f"\nStocks file after cleaning:\t{df.shape}\t{df.columns.values}\n")
-    if args.debug:
         print(df.describe())
 
 ##Join all tweets from the same day into one text
@@ -124,6 +123,25 @@ def group_tweets(df:pd.DataFrame)->pd.DataFrame:
         print(f"After grouping by days:\t\t{dff.shape}")
     return dff
 
+def map_stock_changes(df:pd.DataFrame,df2:pd.DataFrame,st:pd.DataFrame):
+    # Repeated dates
+    ch = []
+    for d in df["date"]:
+        if d in st.index.values:
+            ch.append(st.loc[d, "change"])
+        else:
+            ch.append(0)
+    df["stock"] = ch
+
+    # Unique dates
+    ch = []
+    for d in df2["date"]:
+        if d in st.index.values:
+            ch.append(st.loc[d, "change"])
+        else:
+            ch.append(0)
+    df2["stock"] = ch
+
 ##Translate string to date
 def get_date(strdate)->datetime.date:
     return datetime.datetime.strptime(strdate[0:10], "%Y-%m-%d").date()
@@ -145,7 +163,7 @@ def remove_stopwords(df:pd.DataFrame):
     en_stopwords.append('go')
 
     no_stop_tweets = []
-    for ss in tqdm(dataf["text"]):
+    for ss in tqdm(df["text"]):
         no_stop_tw = []
         for word in ss.split():
             if word not in en_stopwords:
@@ -208,7 +226,6 @@ def find_entities(df:pd.DataFrame):
                 orgs.append(w.text_with_ws)
 
         orgs_col.append(",".join(orgs))
-    print(f"{spacy_doc.ents}")
     df["entities"] = orgs_col
     if args.verbose or args.debug:
         print("\n",df["entities"].head())
@@ -226,7 +243,6 @@ def analyze_sentiment(df:pd.DataFrame):
         print(df["sentiment"].describe())
     if args.debug:
         print(f"\nData frame:\t{df.columns.values}\n")
-
 
 
 #----------------------------------------------------------
@@ -271,19 +287,35 @@ dataf=pd.concat([tweets1,tweets2],join="outer")
 dataf.set_index(pd.Index(range(dataf.shape[0])), inplace=True)
 dataf["date"]=dataf["date"].apply(get_date)
 
+
 #Group by date
-dataf=group_tweets(dataf)
+dataf2=group_tweets(dataf)
 
 #Prepare stocks
 stocks = pd.read_csv(args.file)
 prepare_stocks(stocks)
-stock_map=dict(zip(stocks["date"],stocks["change"]))
-dataf["stock"]=dataf["date"].map(stock_map).fillna(0)
+
+
+stocks.set_index(stocks["date"],inplace=True)
+if args.verbose or args.debug:
+    print(stocks.columns.values)
+    print(stocks.index.values)
+
+
+map_stock_changes(dataf,dataf2,stocks)
+
+print("\n\n")
+print(dataf["stock"].describe())
+print("\n")
+print(dataf2["stock"].describe())
+print("\n")
 
 if args.verbose or args.debug:
-    print("Final dataframe:\n")
-    print(dataf)
-
+    print("Columns of price changes:\n")
+    print(f"(Not grouped) Not zeros: {dataf.shape[0]-dataf.isin([0]).sum(axis=0)["stock"]}")
+    print("\n")
+    print(f"(Grouped) Not zeros: {dataf2.shape[0]-dataf2.isin([0]).sum(axis=0)["stock"]}")
+    print("\n\n")
 # ------------------------------------------
 
 if args.simple:
@@ -293,6 +325,7 @@ if args.simple:
 
 print("\n\t\t-------------------------STOPWORDS-------------------------")
 remove_stopwords(dataf)
+remove_stopwords(dataf2)
 
 # ------------------------------------------
 
@@ -302,6 +335,7 @@ remove_stopwords(dataf)
 
 print("\n\t\t-------------------------TOKENIZATION-------------------------")
 tokenize(dataf)
+tokenize(dataf2)
 
 # ------------------------------------------
 
@@ -311,12 +345,14 @@ tokenize(dataf)
 
 print("\n\t\t-------------------------LEMMATIZATION-------------------------")
 lemmatize(dataf)
+lemmatize(dataf2)
 
 #---------------------------------------
 
-print("\n\t\t-------------------------ENTITIES-------------------------")
+#print("\n\t\t-------------------------ENTITIES-------------------------")
 
-find_entities(dataf)
+#find_entities(dataf)
+#find_entities(dataf2)
 
 
 #---------------------------------------
@@ -326,19 +362,27 @@ find_entities(dataf)
 print("\n\t\t-------------------------SENTIMENT-------------------------")
 
 analyze_sentiment(dataf)
+analyze_sentiment(dataf2)
+
 if args.verbose:
     print(f"\n{dataf.columns.values}")
+    print(f"\n{dataf2.columns.values}")
 if args.debug:
     print(dataf)
 
 #------------TRAINING MODEL-------------------
 print("\n\t\t-------------------------MODEL TRAINING-------------------------")
 
-dff=dataf.loc[:,["sentiment","entities"]]
-X=ColumnTransformer(transformers=[("ents",CountVectorizer(strip_accents='ascii',min_df=0.15),"entities"),
-                                  ("sents",MinMaxScaler(),["sentiment"])]).fit_transform(dff)
 
-targ=dataf["stock"]
+transf=ColumnTransformer(transformers=[("lemms",CountVectorizer(strip_accents='ascii',min_df=0.01),"lemmas"),
+                                  #("ents",CountVectorizer(strip_accents='ascii',min_df=0.01),"entities"),
+                                  ("sents",MinMaxScaler(),["sentiment"])])
+
+dff=dataf2.loc[:,["sentiment", "lemmas"]]
+
+X=transf.fit_transform(dff)
+
+targ=dataf2["stock"]
 
 if args.verbose or args.debug:
     print(f"\nTarget: {targ.shape}\t\tDataframe: {X.shape}\n")
@@ -353,18 +397,47 @@ if args.verbose or args.debug:
 
 
 #Test the models
-#SVM (Support Vector Machine)
+
 sgd = SGDClassifier(random_state=42).fit(x_train, y_train)
 pred=sgd.predict(x_test)
 print("\nAccuracy:\t",accuracy_score(pred,y_test))
 
-#lr=LogisticRegression(random_state=777).fit(x_train, y_train)
-# pred=lr.predict(x_test)
-# print("\nAccuracy:\t",accuracy_score(pred,y_test))
-
-svm=SVC(random_state=777).fit(x_train, y_train)
-pred=svm.predict(x_test)
+lr=LogisticRegression(random_state=42).fit(x_train, y_train)
+pred=lr.predict(x_test)
 print("\nAccuracy:\t",accuracy_score(pred,y_test))
 
+pred=lr.predict(X[4750:4760,:])
+print(dataf2["stock"].iloc[4750:4760].values,"\n",pred)
+print("\n")
+#---------------------------------------------------------------------------------------
 
+dff=[]
 
+dff=dataf.loc[:,["sentiment", "lemmas"]]
+X=transf.fit_transform(dff)
+targ=dataf["stock"]
+
+if args.verbose or args.debug:
+    print(f"\nTarget: {targ.shape}\t\tDataframe: {X.shape}\n")
+
+#Divide data into training and testing sets
+x_train, x_test, y_train, y_test = train_test_split(X.toarray(), targ, test_size=0.2, random_state=42)
+if args.verbose or args.debug:
+    print('X_train: ', x_train.shape)
+    print('X_test: ', x_test.shape)
+    print('y_train: ', y_train.shape)
+    print('y_test: ', y_test.shape)
+
+#Test the models
+
+sgd = SGDClassifier(random_state=42).fit(x_train, y_train)
+pred=sgd.predict(x_test)
+print("\nAccuracy:\t",accuracy_score(pred,y_test))
+
+lr=LogisticRegression(random_state=42).fit(x_train, y_train)
+pred=lr.predict(x_test)
+print("\nAccuracy:\t",accuracy_score(pred,y_test))
+
+pred=lr.predict(X[80050:80060,:])
+print(dataf["stock"].iloc[80050:80060].values,"\n",pred)
+print("\n")
