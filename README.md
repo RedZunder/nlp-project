@@ -24,8 +24,22 @@ It is proven that social media posts affect mass psychology, and mass psychology
 The [tweets file](https://www.thetrumparchive.com/faq#:~:text=a%20CSV%20file) and the [truth social file](https://github.com/stiles/trump-truth-social-archive/tree/main?tab=readme-ov-file#data-storage-and-access) contain public posts made by Donald Trump on Twitter and Truth Social, respectively.<br/>
 The model will predict the change on the stock price: whether it will increase, decrease, or remain approximately the same day after day. Using Natural Language Processing, the content of the tweets are simplified into lemmas, and classified into Organization, Person or Geopolitical Entitiy, and using sentiment analysis to determine the positivity or negativity of the tweet.
 This is done to assist the model in finding possible patterns in naming of entities, such as "Russia" (GPE), "UNESCO" (ORG) or "Ronald Reagan" (PERSON), and whether the post says something positive or negative about them, and how this influences mass psychology and stock fluctuation. This can be implemented directly in the real world, as all the information is publicly available, and only updating the databases is necessary, which can be done through GoogleFinance API for the chosen stock, and through a scraper or API for tweets and posts.<br/>
-In order to test the method, I will use 2 popular models: Stochastic Gradient Descent (SGD) and Logistic Regression (LR), as well as changing the threshold of price change between 0.1, 0.5 and 1% of tolerance, meaning any change under that value will be considered insignificant and show as 0.
+In order to test the method, I will use 2 popular models: Stochastic Gradient Descent (SGD) and Logistic Regression (LR), as well as changing the threshold of price change between 0.1, 0.5 and 1% of tolerance, meaning any change under that value will be considered insignificant and show as 0.<br/>
+The accuracy of the model will be tested by using the `accuracy_score` function, and a custom function `check_accuracy`, which will check the number of correct guesses when the target value is not zero. This allows to focus only on actual changes in price, and not just remaining constant. If the value matches (-1==-1 or 1==1) then the number increases by 1, and if the predicted value was 0 but the correct answer was 1, it will increase by 0.5, since it is an acceptable outcome (the model expects the stock to remain constant but it increases, which is still good news).<br/>
 
+```
+##Measure accuracy for predicting changes different from 0
+def check_accuracy(goal:numpy.ndarray,prediction:numpy.ndarray):
+    acc=0.0
+    for g,p in zip(goal,prediction):
+        if g!=0:
+            if g==p:
+                acc+=1
+            elif g==1 and p==0:
+                acc+=0.5
+
+    return float(acc/goal.shape[0])
+```
 
 
 

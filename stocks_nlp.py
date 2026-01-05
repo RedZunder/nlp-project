@@ -1,9 +1,6 @@
 import argparse
 from statistics import mean
 
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
-from sklearn.svm import SVC
-
 
 ##Argument parser setup
 def setup_parser(parse):
@@ -16,6 +13,7 @@ def setup_parser(parse):
     parse.add_argument("-u", "--update", help="Download nltk packages. *Strongly recommended* "
                                               "for first-time program execution", action="store_true")
     parse.add_argument("-s", "--simple",help="Only prepare the dataframe",action="store_true")
+    parse.add_argument("-d","--days", help="Number of days to test algorithm (default 10)", default=10, type=int)
     return parse.parse_args()
 
 parser = argparse.ArgumentParser()
@@ -31,19 +29,21 @@ start=time.time()
 from nltk.corpus import stopwords                           #stopwords
 import re                                                   #regular expressions (regex)
 import nltk                                                 #tokenization
-import spacy                                                #parts of speech tagging
-from spacy import tokenizer
-from spacy import displacy
+#import spacy                                                #parts of speech tagging
+#from spacy import tokenizer
+#from spacy import displacy
 import pandas as pd
-from nltk.tokenize import word_tokenize, sent_tokenize      #tokenizing
+import numpy as np
+from nltk.tokenize import sent_tokenize      #tokenizing
 from nltk.stem import WordNetLemmatizer                     #lemmatizing
-from sklearn.linear_model import SGDClassifier, LogisticRegression
+from sklearn.linear_model import SGDClassifier#, LogisticRegression
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 from sklearn.feature_extraction.text import CountVectorizer
-from sklearn.impute import SimpleImputer
 from sklearn.compose import ColumnTransformer
-from sklearn.feature_selection import VarianceThreshold
+from sklearn.preprocessing import MinMaxScaler
+from matplotlib import pyplot as plt
+#from sklearn.svm import SVC
 from vaderSentiment.vaderSentiment\
         import SentimentIntensityAnalyzer                   #Sentiment analysis
 from tqdm import tqdm                                       #Loading bar
@@ -90,7 +90,7 @@ def prepare_stocks(df:pd.DataFrame):
     change=[]
     prev_i=0
     for i in df["Close"]:
-        if i >1.001*prev_i or i<0.999*prev_i:         # 1% threshold
+        if i >1.0001*prev_i or i<0.9999*prev_i:         # 1% threshold
             change.append(math.copysign(1,i-prev_i))
         else:
             change.append(0)
@@ -148,7 +148,7 @@ def get_date(strdate)->datetime.date:
 
 ##For stock's different format
 def get_stock_date(strdate)->datetime.date:
-    return datetime.datetime.strptime(f"{strdate[0:5]}/20{strdate[6:8]}", "%m/%d/%Y").date()
+    return datetime.datetime.strptime(f"{strdate[0:5]}/20{strdate[8:10]}", "%d/%m/%Y").date()
 
 ##Remove stopwords from the texts in dataframe
 def remove_stopwords(df:pd.DataFrame):
@@ -244,6 +244,37 @@ def analyze_sentiment(df:pd.DataFrame):
     if args.debug:
         print(f"\nData frame:\t{df.columns.values}\n")
 
+##Measure accuracy for predicting changes different from 0
+def check_accuracy(goal:np.ndarray,prediction:np.ndarray):
+    acc=0.0
+    for g,p in zip(goal,prediction):
+        if g!=0:
+            if g==p:
+                acc+=1
+            elif g==1 and p==0:
+                acc+=0.5
+
+    return float(acc/goal.shape[0])
+
+def test_profit(init:float, days:int,model)->float:
+    result=init
+    vals=[]
+    last_value=stocks["Close"].iloc[0]
+    pocket=False
+
+    for p,g in zip(sgd.predict(model.toarray()[-days:]),stocks["Close"].array[-days:]):
+        if p==1:
+            result*=1+(g-last_value)/last_value
+            pocket=False
+        if p==-1 and not pocket:
+            last_value=g
+            pocket=True
+        vals.append(result)
+    plt.plot(vals,alpha=0.8)
+    plt.show()
+    plt.plot(stocks["Close"].array[-days:],alpha=0.8)
+    plt.show()
+    return result
 
 #----------------------------------------------------------
 
@@ -400,16 +431,23 @@ if args.verbose or args.debug:
 
 sgd = SGDClassifier(random_state=42).fit(x_train, y_train)
 pred=sgd.predict(x_test)
-print("\nAccuracy:\t",accuracy_score(pred,y_test))
+print("\nAccuracy:\t  accuracy_score:",accuracy_score(pred,y_test)," \t  custom score:",check_accuracy(y_test,pred))
 
-lr=LogisticRegression(random_state=42).fit(x_train, y_train)
-pred=lr.predict(x_test)
-print("\nAccuracy:\t",accuracy_score(pred,y_test))
+#lr=LogisticRegression(random_state=42).fit(x_train, y_train)
+#pred=lr.predict(x_test)
+#print("\nAccuracy:\t",accuracy_score(pred,y_test)," \t",check_accuracy(y_test,pred))
 
-pred=lr.predict(X[4750:4760,:])
-print(dataf2["stock"].iloc[4750:4760].values,"\n",pred)
-print("\n")
+
+
+
+print("\n\n Starting with 100 $, you end with:",test_profit(100,args.days,X),"$")
+
+
+
+exit()
+
 #---------------------------------------------------------------------------------------
+# GROUPED DATA VERSION - LESS ACCURACY
 
 dff=[]
 
@@ -432,12 +470,14 @@ if args.verbose or args.debug:
 
 sgd = SGDClassifier(random_state=42).fit(x_train, y_train)
 pred=sgd.predict(x_test)
-print("\nAccuracy:\t",accuracy_score(pred,y_test))
+print("\nAccuracy:\t",accuracy_score(pred,y_test)," \t",check_accuracy(y_test,pred))
+pred=sgd.predict(X[80040:80060,:])
+print(dataf["stock"].iloc[80040:80060].values,"\n",pred)
+print("\n")
 
 lr=LogisticRegression(random_state=42).fit(x_train, y_train)
 pred=lr.predict(x_test)
-print("\nAccuracy:\t",accuracy_score(pred,y_test))
-
-pred=lr.predict(X[80050:80060,:])
-print(dataf["stock"].iloc[80050:80060].values,"\n",pred)
+print("\nAccuracy:\t",accuracy_score(pred,y_test)," \t",check_accuracy(y_test,pred))
+pred=lr.predict(X[80040:80060,:])
+print(dataf["stock"].iloc[80040:80060].values,"\n",pred)
 print("\n")
