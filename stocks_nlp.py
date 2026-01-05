@@ -90,7 +90,7 @@ def prepare_stocks(df:pd.DataFrame):
     change=[]
     prev_i=0
     for i in df["Close"]:
-        if i >1.0001*prev_i or i<0.9999*prev_i:         # 1% threshold
+        if i >1.0001*prev_i or i<0.9999*prev_i:         # 0.01% threshold
             change.append(math.copysign(1,i-prev_i))
         else:
             change.append(0)
