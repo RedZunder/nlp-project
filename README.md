@@ -27,7 +27,7 @@ This is done to assist the model in finding possible patterns in naming of entit
 In order to test the method, I will use 2 popular models: Stochastic Gradient Descent (SGD) and Logistic Regression (LR).<br/>
 The accuracy of the model will be tested by using the `accuracy_score` function, and a custom function `check_accuracy`, which will check the number of correct guesses when the target value is not zero. This allows to focus only on actual changes in price, and not just remaining constant. If the value matches (-1==-1 or 1==1) then the number increases by 1, and if the predicted value was 0 but the correct answer was 1, it will increase by 0.5, since it is an acceptable outcome (the model expects the stock to remain constant but it increases, which is still good news if we are currently holding that stock).<br/>
 
-```
+```python
 ##Measure accuracy for predicting changes different from 0
 def check_accuracy(goal:numpy.ndarray,prediction:numpy.ndarray):
     acc=0.0
@@ -42,7 +42,7 @@ def check_accuracy(goal:numpy.ndarray,prediction:numpy.ndarray):
 ```
 
 ## Results
-Both the `accuracy_score` and `check_accuracy` functions calculate a similar accuracy of around 44%, and in every occasion the accuracy is higher for the dataframe with grouped tweets by dates. LR shows lower accuracy in every case.<br/>
+Both the `accuracy_score` and `check_accuracy` functions calculate a similar accuracy of **around 44%**, and in every occasion the accuracy is higher for the dataframe with grouped tweets by dates. LR shows lower accuracy in every case. Moreover, using entities instead of lemmas in the training process *reduces* the accuracy of all models, which proves that naming of certain people or organizations is not as usefull as full the full context of the posts.<br/>
 Using a function to calculate the actual ammount of money won or lost, `test_profit`, we can see the actual impact and usefulness of the model. 
 
 <img width="639" height="479" alt="Predicted choices" src="https://github.com/user-attachments/assets/614fdb26-65ec-400c-a43c-73bfd719d15a" />
@@ -50,7 +50,7 @@ Using a function to calculate the actual ammount of money won or lost, `test_pro
 Here is the actual USD/EUR exchange for that period of time:<br>
 <img width="639" height="479" alt="Real stock changes" src="https://github.com/user-attachments/assets/8e0f10da-3f2f-4919-806d-a9d3d834f645" />
 
-Eventhough there is a loss of 2%, this still beats random choice.<br/>
+*Eventhough there is a loss of 2%, this still beats random choice*.<br/>
 
 ### Usage
 Using the provided currency stock file `usd2eur.csv` extracted using GoogleFinance API, we run `python stocks_nlp.py -f "usd2eur.csv" -d <number-of-days>`.
